@@ -4,3 +4,4 @@ streamlit
 exa-py
 requests
 pysqlite3-binary
+pybaseball
