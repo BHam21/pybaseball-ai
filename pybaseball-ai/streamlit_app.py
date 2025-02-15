@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from exa_py import Exa
 import requests
 import pybaseball
+from src.components.sidebar import render_sidebar
 
 # Import AI Agent Functions
 def create_data_analyst():
@@ -91,10 +92,8 @@ st.logo(
     size="large"
 )
 
-# Main layout
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.title("⚾ CrewAI Baseball Analyst", anchor=False)
+# Render sidebar and get selection (provider and model)
+selection = render_sidebar()
 
 # Check if API keys are set
 if not os.getenv("GROQ_API_KEY") or not os.getenv("EXA_API_KEY"):
