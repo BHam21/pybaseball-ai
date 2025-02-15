@@ -1,11 +1,10 @@
-from typing import Type
+# src/components/researcher.py
+
 from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
-from exa_py import Exa
-import requests
 import os
-import pybaseball
+import requests
 
 #--------------------------------#
 #         EXA Answer Tool        #
@@ -16,7 +15,7 @@ class EXAAnswerToolSchema(BaseModel):
 class EXAAnswerTool(BaseTool):
     name: str = "Ask Exa a question"
     description: str = "A tool that asks Exa a question and returns the answer."
-    args_schema: Type[BaseModel] = EXAAnswerToolSchema
+    args_schema = EXAAnswerToolSchema
     answer_url: str = "https://api.exa.ai/answer"
 
     def _run(self, query: str):
@@ -25,54 +24,30 @@ class EXAAnswerTool(BaseTool):
             "content-type": "application/json",
             "x-api-key": os.getenv("EXA_API_KEY")
         }
-        
         try:
             response = requests.post(
                 self.answer_url,
                 json={"query": query, "text": True},
                 headers=headers,
             )
-            response.raise_for_status() 
-        except requests.exceptions.HTTPError as http_err:
-            print(f"HTTP error occurred: {http_err}")
-            print(f"Response content: {response.content}")
-            raise
+            response.raise_for_status()
         except Exception as err:
-            print(f"Other error occurred: {err}")
-            raise
-
+            raise RuntimeError(f"Error calling Exa API: {err}")
         return response.json()["answer"]
 
 #--------------------------------#
-#         Baseball Tools         #
-#--------------------------------#
-class PyBaseballTool(BaseTool):
-    name: str = "PyBaseball Data Tool"
-    description: str = "Execute pybaseball commands to fetch baseball statistics and data."
-
-    def _run(self, code: str):
-        try:
-            # Safely execute pybaseball code
-            local_vars = {"pybaseball": pybaseball}
-            exec(code, {"__builtins__": {}}, local_vars)
-            return local_vars.get("result", "Code executed successfully")
-        except Exception as e:
-            return f"Error executing code: {str(e)}"
-
-#--------------------------------#
-#         Agents Creation        #
+#         Agent Creation         #
 #--------------------------------#
 def create_data_analyst():
     llm = LLM(
         api_key=os.getenv("GROQ_API_KEY"),
         model="groq/mixtral-8x7b-32768"
     )
-    
     return Agent(
-        role='Baseball Data Analyst',
-        goal='Analyze baseball data and create meaningful insights',
-        backstory='Expert at baseball analytics and statistics',
-        tools=[PyBaseballTool()],
+        role='Data Analyst',
+        goal='Conduct thorough research and analysis on provided topics',
+        backstory='An expert researcher with deep analytical skills',
+        tools=[EXAAnswerTool()],
         llm=llm,
         verbose=True
     )
@@ -82,11 +57,10 @@ def create_code_writer():
         api_key=os.getenv("GROQ_API_KEY"),
         model="groq/mixtral-8x7b-32768"
     )
-    
     return Agent(
         role='Code Writer',
-        goal='Write efficient Python code for baseball analysis',
-        backstory='Expert Python developer specialized in data analysis and visualization',
+        goal='Generate comprehensive research reports',
+        backstory='Skilled at producing clear and concise reports and visualizations',
         tools=[EXAAnswerTool()],
         llm=llm,
         verbose=True
@@ -97,60 +71,63 @@ def create_code_reviewer():
         api_key=os.getenv("GROQ_API_KEY"),
         model="groq/mixtral-8x7b-32768"
     )
-    
     return Agent(
         role='Code Reviewer',
-        goal='Review and optimize Python code for baseball analysis',
-        backstory='Senior developer with expertise in code quality and optimization',
+        goal='Critically review and optimize generated content for accuracy and clarity',
+        backstory='Experienced in refining analytical outputs',
         tools=[EXAAnswerTool()],
         llm=llm,
         verbose=True
     )
 
 #--------------------------------#
-#         Tasks Creation         #
+#         Task Creation          #
 #--------------------------------#
-def create_analysis_task(analyst, query):
+def create_analysis_task(agent, query):
     return Task(
-        description=f"Analyze baseball data for: {query}",
-        agent=analyst
+        description=f"Conduct initial research on: {query}",
+        agent=agent
     )
 
-def create_coding_task(writer, requirements):
+def create_reporting_task(agent, query):
     return Task(
-        description=f"Write Python code to: {requirements}",
-        agent=writer
+        description=f"Generate a detailed research report for: {query}",
+        agent=agent
     )
 
-def create_review_task(reviewer, code):
+def create_review_task(agent):
     return Task(
-        description=f"Review and optimize this code:\n{code}",
-        agent=reviewer
+        description="Review and optimize the generated research report for clarity and accuracy",
+        agent=agent
     )
 
-#create agent to execute the code after is reviewed
-def create_execution_task(executor, code):
+def create_presentation_task(agent):
     return Task(
-        description=f"Execute the code:\n{code}",
-        agent=executor
+        description="Prepare and present the final research report",
+        agent=agent
     )
 
 #--------------------------------#
-#         Execute Analysis       #
+#         Run Research           #
 #--------------------------------#
-def run_baseball_analysis(query):
-    analyst = create_data_analyst()
-    writer = create_code_writer()
-    reviewer = create_code_reviewer()
-    executor = create_data_analyst()  # Using data analyst as executor since it has PyBaseballTool
-    
+def run_research(query):
+    """
+    Run a multi-agent research workflow using a Crew.
+    """
+    # Instantiate agents
+    analyst   = create_data_analyst()
+    writer    = create_code_writer()
+    reviewer  = create_code_reviewer()
+    presenter = create_data_analyst()  # Reuse the data analyst as presenter if desired
+
+    # Build a Crew workflow with sequential tasks
     crew = Crew(
-        agents=[analyst, writer, reviewer, executor],
+        agents=[analyst, writer, reviewer, presenter],
         tasks=[
             create_analysis_task(analyst, query),
-            create_coding_task(writer, "Create visualization based on analysis"),
-            create_review_task(reviewer, "Review final code and results"),
-            create_execution_task(executor, "Execute the reviewed code")
+            create_reporting_task(writer, query),
+            create_review_task(reviewer),
+            create_presentation_task(presenter)
         ],
         verbose=True,
         process=Process.sequential
