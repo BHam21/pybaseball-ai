@@ -5,7 +5,73 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import os
 from crewai import Crew, Process
-from your_ai_module import run_baseball_analysis
+from crewai.tools import BaseTool
+from pydantic import BaseModel, Field
+from exa_py import Exa
+import requests
+import pybaseball
+
+# Import AI Agent Functions
+def create_data_analyst():
+    llm = LLM(
+        api_key=os.getenv("GROQ_API_KEY"),
+        model="groq/mixtral-8x7b-32768"
+    )
+    return Agent(
+        role='Baseball Data Analyst',
+        goal='Analyze baseball data and create meaningful insights',
+        backstory='Expert at baseball analytics and statistics',
+        tools=[PyBaseballTool()],
+        llm=llm,
+        verbose=True
+    )
+
+def create_code_writer():
+    llm = LLM(
+        api_key=os.getenv("GROQ_API_KEY"),
+        model="groq/mixtral-8x7b-32768"
+    )
+    return Agent(
+        role='Code Writer',
+        goal='Write efficient Python code for baseball analysis',
+        backstory='Expert Python developer specialized in data analysis and visualization',
+        tools=[EXAAnswerTool()],
+        llm=llm,
+        verbose=True
+    )
+
+def create_code_reviewer():
+    llm = LLM(
+        api_key=os.getenv("GROQ_API_KEY"),
+        model="groq/mixtral-8x7b-32768"
+    )
+    return Agent(
+        role='Code Reviewer',
+        goal='Review and optimize Python code for baseball analysis',
+        backstory='Senior developer with expertise in code quality and optimization',
+        tools=[EXAAnswerTool()],
+        llm=llm,
+        verbose=True
+    )
+
+def run_baseball_analysis(query):
+    analyst = create_data_analyst()
+    writer = create_code_writer()
+    reviewer = create_code_reviewer()
+    executor = create_data_analyst()
+    
+    crew = Crew(
+        agents=[analyst, writer, reviewer, executor],
+        tasks=[
+            Task(description=f"Analyze baseball data for: {query}", agent=analyst),
+            Task(description="Write Python code to create visualization based on analysis", agent=writer),
+            Task(description="Review final code and results", agent=reviewer),
+            Task(description="Execute the reviewed code", agent=executor)
+        ],
+        verbose=True,
+        process=Process.sequential
+    )
+    return crew.kickoff()
 
 #--------------------------------#
 #         Streamlit App          #
